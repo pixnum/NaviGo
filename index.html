@@ -93,7 +93,7 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 <div class="row">
 <button id="loadPOIs">Load Nearby POIs</button>
 <button id="loadTraffic">Load Traffic Alerts</button>
-<button id="loadPublicTransport">Load Public Transport</button>
+<button id="loadPublicTransport">Load Public Transport & ETA</button>
 </div>
 
 <div id="publicTransport"></div>
@@ -212,6 +212,7 @@ function startTracking(){
       previousPos={lat,lon};
       updateStreetName(lat,lon);
       updateRoute(lat,lon);
+      updateNearbyTransportETA(lat,lon);
     },
     function error(err){switch(err.code){case err.PERMISSION_DENIED: alert("Location permission denied");status.textContent="Permission denied"; break; case err.POSITION_UNAVAILABLE: alert("Location unavailable");status.textContent="Location unavailable"; break; case err.TIMEOUT: alert("Location request timed out");status.textContent="Timeout"; break;}},
     gpsOptions
@@ -264,16 +265,21 @@ loadTrafficBtn.addEventListener('click',async ()=>{
   }catch(e){trafficAlertsDiv.textContent="No traffic alerts";}
 });
 
-// Public transport real-time
-loadPublicTransportBtn.addEventListener('click',async ()=>{
-  if(!previousPos) return alert("Start tracking first");
-  publicTransportDiv.textContent="Loading nearby stops...";
+// Real-time public transport & ETA
+async function updateNearbyTransportETA(lat,lon){
+  publicTransportDiv.textContent="Updating nearby transport...";
   try{
-    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[public_transport=platform];out;`);
+    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${lat},${lon})[public_transport=platform];out;`);
     let data=await res.json();publicTransportDiv.textContent="";
-    data.elements.forEach(e=>{const p=document.createElement('div');p.textContent=`Stop: ${e.tags.name||'Unnamed'}, Lat:${e.lat.toFixed(5)}, Lon:${e.lon.toFixed(5)}`;publicTransportDiv.appendChild(p);});
+    data.elements.forEach(e=>{
+      let dMeters=calcDistance(lat,lon,e.lat,e.lon);
+      let etaMin=(dMeters/80).toFixed(0); // approx walking 80 m/min
+      const p=document.createElement('div');
+      p.textContent=`Stop: ${e.tags.name||'Unnamed'}, ETA: ~${etaMin} min`;
+      publicTransportDiv.appendChild(p);
+    });
   }catch(e){publicTransportDiv.textContent="No nearby public transport stops";}
-});
+}
 
 // Initialize bookmarks
 renderBookmarks();
