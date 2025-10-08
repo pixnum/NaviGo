@@ -28,11 +28,11 @@ body.dark #toggleDark {background:#333;color:#fff;border-color:#666;}
 #status,p{font-size:0.85rem;word-wrap:break-word;}
 .compass{font-weight:bold;}
 #calibrationHint{color:#d9534f;font-weight:bold;display:none;}
-#publicTransport,#trafficAlerts,#poiList,#wearableData{font-size:0.85rem;margin-top:0.3rem;max-height:100px;overflow-y:auto;}
 footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888;border-top:1px solid #ccc;position:sticky;bottom:0;background:#fff;z-index:999;}
 body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 #zoomControls{position:absolute;top:60px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:1002;}
 #zoomControls button{width:35px;height:35px;border-radius:8px;border:none;background:#007bff;color:#fff;font-weight:bold;cursor:pointer;}
+#mapLayerSelector{margin:0.5rem 0;}
 @media(max-width:500px){#map{height:300px;} .app-title{font-size:1.3rem;} .app-icon{font-size:1.3rem;}}
 </style>
 </head>
@@ -64,6 +64,15 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
     <p id="calibrationHint">⚠️ Move your device in a figure-8 to calibrate the compass</p>
     <p id="street">Street: --</p>
 
+    <div id="mapLayerSelector">
+      <select id="mapLayerSelect">
+        <option value="Street">Street</option>
+        <option value="Topographic">Topographic</option>
+        <option value="Satellite">Satellite</option>
+        <option value="Dark">Dark</option>
+      </select>
+    </div>
+
     <div class="row">
       <button id="getLocation">Start Tracking</button>
       <button id="sos">Emergency SOS</button>
@@ -91,21 +100,6 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
       <button id="batterySaverBtn">Battery Saver: OFF</button>
     </div>
 
-    <div class="row">
-      <button id="rideShareBtn">Ride-Sharing</button>
-      <button id="connectWearableBtn">Connect Wearable</button>
-    </div>
-
-    <div class="row">
-      <button id="loadPOIs">Load Nearby POIs</button>
-      <button id="loadTraffic">Load Traffic Alerts</button>
-      <button id="loadPublicTransport">Load Public Transport & ETA</button>
-    </div>
-
-    <div id="publicTransport"></div>
-    <div id="trafficAlerts"></div>
-    <div id="poiList"></div>
-    <div id="wearableData"></div>
     <div class="bookmarks" id="bookmarkList"></div>
   </div>
   <footer>© Manik Roy 2025 | All Rights Reserved</footer>
@@ -113,249 +107,115 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-// ===================== Map & Tracking =====================
-let map=L.map('map').setView([0,0],2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-let marker=null,routeLine=L.polyline([], {color:'blue'}).addTo(map);
-let watchId=null,previousPos=null,totalDistance=0,destinationPos=null;
-let bookmarks=JSON.parse(localStorage.getItem('bookmarks')||"[]");
+// ===================== Map & Layers =====================
+const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'});
+const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17, attribution:'&copy; OpenTopoMap contributors'});
+const satelliteLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:20, subdomains:['mt0','mt1','mt2','mt3'], attribution:'© Google'});
+const darkLayer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_dark/{z}/{x}/{y}{r}.png',{maxZoom:20, attribution:'&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap contributors'});
 
-// Elements
-const latElem=document.getElementById('latitude'), lonElem=document.getElementById('longitude'),
-altElem=document.getElementById('altitude'), speedElem=document.getElementById('speed'),
-accuracyElem=document.getElementById('accuracy'), compassElem=document.getElementById('compass'),
-streetElem=document.getElementById('street'), status=document.getElementById('status'),
-getLocationBtn=document.getElementById('getLocation'), toggleDarkBtn=document.getElementById('toggleDark'),
-destinationInput=document.getElementById('destination'), navigateBtn=document.getElementById('navigateBtn'),
-addBookmarkBtn=document.getElementById('addBookmark'), clearMarkersBtn=document.getElementById('clearMarkers'),
-sosBtn=document.getElementById('sos'), bookmarkList=document.getElementById('bookmarkList'),
-calibrationHint=document.getElementById('calibrationHint'), batteryBtn=document.getElementById('batterySaverBtn'),
-rideShareBtn=document.getElementById('rideShareBtn'), connectWearableBtn=document.getElementById('connectWearableBtn'),
-publicTransportDiv=document.getElementById('publicTransport'),
-trafficAlertsDiv=document.getElementById('trafficAlerts'),
-poiListDiv=document.getElementById('poiList'),
-loadPOIsBtn=document.getElementById('loadPOIs'),
-loadTrafficBtn=document.getElementById('loadTraffic'),
-loadPublicTransportBtn=document.getElementById('loadPublicTransport'),
-wearableDataDiv=document.getElementById('wearableData');
-
-let batterySaver=false;
-let gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:10000};
-let lastSpeakTime=0,lastDistance=null;
+let map = L.map('map',{center:[0,0],zoom:2,layers:[streetLayer]});
+const baseMaps = {"Street":streetLayer,"Topographic":topoLayer,"Satellite":satelliteLayer,"Dark":darkLayer};
+document.getElementById('mapLayerSelect').addEventListener('change',function(){
+  const val=this.value;
+  map.eachLayer(layer=>{
+    if(Object.values(baseMaps).includes(layer)) map.removeLayer(layer);
+  });
+  baseMaps[val].addTo(map);
+});
 
 // ===================== Dark Mode =====================
-toggleDarkBtn.addEventListener('click',()=>{
-  document.body.classList.toggle('dark');
-  map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';
-});
+document.getElementById('toggleDark').addEventListener('click',()=>document.body.classList.toggle('dark'));
 
 // ===================== Zoom Controls =====================
-document.getElementById('zoomIn').addEventListener('click',()=>{map.zoomIn();});
-document.getElementById('zoomOut').addEventListener('click',()=>{map.zoomOut();});
+document.getElementById('zoomIn').addEventListener('click',()=>map.zoomIn());
+document.getElementById('zoomOut').addEventListener('click',()=>map.zoomOut());
+
+// ===================== GPS Tracking & Compass =====================
+let watchID,previousPos=null,userMarker=null;
+const latP=document.getElementById('latitude'), lonP=document.getElementById('longitude'), altP=document.getElementById('altitude'),
+speedP=document.getElementById('speed'), accP=document.getElementById('accuracy'), compassP=document.getElementById('compass'),
+statusP=document.getElementById('status'), streetP=document.getElementById('street');
+
+document.getElementById('getLocation').addEventListener('click',()=>{
+  if(navigator.geolocation){
+    watchID=navigator.geolocation.watchPosition(updatePosition,error,{enableHighAccuracy:true,maximumAge:0});
+    statusP.textContent="Tracking started...";
+  } else statusP.textContent="Geolocation not supported.";
+});
+
+function updatePosition(pos){
+  const c=pos.coords;
+  previousPos={lat:c.latitude,lon:c.longitude,alt:c.altitude,speed:c.speed,acc:c.accuracy};
+  latP.textContent=`Latitude: ${c.latitude.toFixed(6)}`;
+  lonP.textContent=`Longitude: ${c.longitude.toFixed(6)}`;
+  altP.textContent=`Altitude: ${(c.altitude||0).toFixed(2)} m`;
+  speedP.textContent=`Speed: ${(c.speed||0*3.6).toFixed(2)} km/h`;
+  accP.textContent=`Accuracy: ${c.accuracy} m`;
+  map.setView([c.latitude,c.longitude],15);
+  if(!userMarker) userMarker=L.marker([c.latitude,c.longitude]).addTo(map).bindPopup("You are here").openPopup();
+  else userMarker.setLatLng([c.latitude,c.longitude]);
+  fetchStreetName(c.latitude,c.longitude);
+}
+
+function error(err){statusP.textContent=`ERROR(${err.code}): ${err.message}`;}
 
 // ===================== Compass =====================
-function getDirectionName(deg){const dirs=['N','NE','E','SE','S','SW','W','NW'];return dirs[Math.round(deg/45)%8];}
-let compassHeading=0,lastHeading=null,unstableCount=0;
-function handleOrientation(event){
-  let alpha=event.alpha;
-  if(event.absolute && alpha!==null){
-    compassHeading=360-alpha;
-    compassElem.textContent=`Compass: ${compassHeading.toFixed(0)}° (${getDirectionName(compassHeading)})`;
-    if(lastHeading!==null && Math.abs(compassHeading-lastHeading)>20){unstableCount++;}else{unstableCount=0;}
-    lastHeading=compassHeading;
-    calibrationHint.style.display=(unstableCount>=3)?'block':'none';
-  }
-}
-function enableCompass(){
-  if(typeof DeviceOrientationEvent.requestPermission==='function'){
-    DeviceOrientationEvent.requestPermission().then(r=>{if(r==='granted')window.addEventListener('deviceorientationabsolute',handleOrientation,true);}).catch(console.error);
-  } else{window.addEventListener('deviceorientationabsolute',handleOrientation,true);}
-}
-
-// ===================== Distance & Voice =====================
-function calcDistance(lat1,lon1,lat2,lon2){const R=6371e3,φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180,Δφ=(lat2-lat1)*Math.PI/180,Δλ=(lon2-lon1)*Math.PI/180;const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));return R*c;}
-async function updateStreetName(lat,lon){try{let res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);let data=await res.json();streetElem.textContent=`Street: ${data.address.road||'--'}`;}catch(e){streetElem.textContent='Street: --';}}
-function speakDistance(lat1,lon1,lat2,lon2){if(!window.speechSynthesis)return;const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;if(lastDistance!==null&&Math.abs(distanceKm-lastDistance)<0.05)return;lastDistance=distanceKm;const now=Date.now();if(now-lastSpeakTime<3000)return;lastSpeakTime=now;window.speechSynthesis.cancel();const msg=new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);msg.lang='en-US';window.speechSynthesis.speak(msg);}
-
-// ===================== Battery =====================
-batteryBtn.addEventListener('click',()=>{
-  batterySaver=!batterySaver;
-  if(batterySaver){gpsOptions.enableHighAccuracy=false;gpsOptions.maximumAge=30000;batteryBtn.textContent='Battery Saver: ON';}
-  else{gpsOptions.enableHighAccuracy=true;gpsOptions.maximumAge=0;batteryBtn.textContent='Battery Saver: OFF';}
-  if(watchId) navigator.geolocation.clearWatch(watchId);
-  startTracking();
+window.addEventListener('deviceorientationabsolute',e=>{
+  let alpha=e.alpha||0;
+  compassP.textContent=`Compass: ${alpha.toFixed(0)}° (${getDirectionName(alpha)})`;
 });
 
-// ===================== Tracking =====================
-function startTracking(){
-  if(!navigator.geolocation){alert("Geolocation not supported");status.textContent="Geolocation not supported";return;}
-  if(watchId) navigator.geolocation.clearWatch(watchId);
-  watchId=navigator.geolocation.watchPosition(
-    function success(pos){
-      if(!pos||!pos.coords)return;
-      const lat=pos.coords.latitude,lon=pos.coords.longitude;
-      const alt=pos.coords.altitude||0,speed=pos.coords.speed||0,accuracy=pos.coords.accuracy||0;
-      status.textContent="Tracking location…";
-      latElem.textContent=`Latitude: ${lat.toFixed(6)}`;
-      lonElem.textContent=`Longitude: ${lon.toFixed(6)}`;
-      altElem.textContent=`Altitude: ${alt.toFixed(2)} m`;
-      speedElem.textContent=`Speed: ${(speed*3.6).toFixed(2)} km/h`;
-      accuracyElem.textContent=`GPS Accuracy: ${accuracy} m`;
-      if(marker) marker.setLatLng([lat,lon]);
-      else marker=L.marker([lat,lon]).addTo(map).bindPopup("You are here").openPopup();
-      map.setView([lat,lon],15);
-      if(previousPos) totalDistance+=calcDistance(previousPos.lat,previousPos.lon,lat,lon);
-      previousPos={lat,lon};
-      routeLine.addLatLng([lat,lon]);
-      updateStreetName(lat,lon);
-      if(destinationPos)speakDistance(lat,lon,destinationPos.lat,destinationPos.lon);
-    },
-    function error(err){console.error(err);status.textContent="Error tracking location";},
-    gpsOptions
-  );
+function getDirectionName(angle){
+  const dirs=["N","NE","E","SE","S","SW","W","NW"];
+  return dirs[Math.floor((angle+22.5)/45)%8];
 }
-getLocationBtn.addEventListener('click',()=>{startTracking(); enableCompass();});
-
-// ===================== Navigation =====================
-navigateBtn.addEventListener('click',()=>{
-  const dest=destinationInput.value.trim();
-  if(!dest){alert("Enter destination");return;}
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dest)}`)
-  .then(r=>r.json()).then(data=>{
-    if(!data||!data.length){alert("Destination not found");return;}
-    const dlat=parseFloat(data[0].lat),dlon=parseFloat(data[0].lon);
-    destinationPos={lat:dlat,lon:dlon};
-    L.marker([dlat,dlon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[30,30]})}).addTo(map).bindPopup("Destination").openPopup();
-  });
-});
 
 // ===================== Bookmarks =====================
-function renderBookmarks(){bookmarkList.innerHTML='';bookmarks.forEach(b=>{const div=document.createElement('div');div.textContent=`${b.name}: ${b.lat.toFixed(6)}, ${b.lon.toFixed(6)}`;bookmarkList.appendChild(div);});}
+let bookmarks=[];
+const addBookmarkBtn=document.getElementById('addBookmark');
+const clearMarkersBtn=document.getElementById('clearMarkers');
+const bookmarkListDiv=document.getElementById('bookmarkList');
+
 addBookmarkBtn.addEventListener('click',()=>{
-  if(!previousPos){alert("No location to bookmark");return;}
-  const name=prompt("Enter bookmark name")||`Bookmark ${bookmarks.length+1}`;
+  if(!previousPos) return alert("Start tracking first!");
+  const name=prompt("Enter bookmark name:","My Location");
   bookmarks.push({name,lat:previousPos.lat,lon:previousPos.lon});
-  localStorage.setItem('bookmarks',JSON.stringify(bookmarks));
   renderBookmarks();
 });
-clearMarkersBtn.addEventListener('click',()=>{routeLine.setLatLng([]);map.eachLayer(l=>{if(l instanceof L.Marker&&!l._icon.classList.contains('leaflet-marker-icon'))map.removeLayer(l);});});
 
-// ===================== SOS =====================
-sosBtn.addEventListener('click',()=>{alert("SOS activated! Sending your location...");console.log(previousPos);});
-
-// ===================== POIs =====================
-loadPOIsBtn.addEventListener('click',async()=>{
-  poiListDiv.textContent="Loading POIs...";
-  try{
-    const res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[amenity];out;`);
-    const data=await res.json();
-    poiListDiv.textContent="";
-    data.elements.forEach(e=>{
-      const p=document.createElement('div');
-      p.textContent=e.tags.name||e.tags.amenity||'Unnamed POI';
-      poiListDiv.appendChild(p);
-    });
-  }catch(e){poiListDiv.textContent="No POIs found";}
+clearMarkersBtn.addEventListener('click',()=>{
+  if(userMarker) map.removeLayer(userMarker);
+  bookmarks=[];
+  renderBookmarks();
 });
 
-// ===================== Traffic Alerts =====================
-loadTrafficBtn.addEventListener('click',async()=>{
-  trafficAlertsDiv.textContent="Loading traffic...";
-  try{
-    const res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[highway=traffic_signals];out;`);
-    const data=await res.json();
-    trafficAlertsDiv.textContent="";
-    data.elements.forEach(e=>{
-      const p=document.createElement('div');
-      p.textContent=`Traffic signal nearby: ${e.tags.name||'Unnamed'}`;
-      trafficAlertsDiv.appendChild(p);
-    });
-  }catch(e){trafficAlertsDiv.textContent="No traffic alerts found";}
-});
-
-// ===================== Public Transport & ETA =====================
-loadPublicTransportBtn.addEventListener('click',async()=>{
-  publicTransportDiv.textContent="Loading nearby public transport...";
-  try{
-    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[public_transport=platform];out;`);
-    let data=await res.json();publicTransportDiv.textContent="";
-    data.elements.forEach(e=>{
-      let dMeters=calcDistance(previousPos.lat,previousPos.lon,e.lat,e.lon);
-      let etaMin=(dMeters/80).toFixed(0);
-      const p=document.createElement('div');
-      p.textContent=`Stop: ${e.tags.name||'Unnamed'}, ETA: ~${etaMin} min`;
-      publicTransportDiv.appendChild(p);
-    });
-  }catch(e){publicTransportDiv.textContent="No nearby public transport stops";}
-});
-
-// ===================== Ride-Sharing Real-Time =====================
-let rideVehicles=[];
-function generateRandomVehicles(lat, lon, count=5){
-  rideVehicles=[];
-  for(let i=0;i<count;i++){
-    const offsetLat=(Math.random()-0.5)/100;
-    const offsetLon=(Math.random()-0.5)/100;
-    rideVehicles.push({id:i,lat:lat+offsetLat,lon:lon+offsetLon,marker:null});
-  }
-}
-function updateRideVehicles(){
-  if(!previousPos) return;
-  rideVehicles.forEach(v=>{
-    if(v.marker)v.marker.setLatLng([v.lat,v.lon]);
-    else{
-      v.marker=L.marker([v.lat,v.lon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[25,25]})}).addTo(map).bindPopup(`Ride Vehicle #${v.id}`);
-    }
+function renderBookmarks(){
+  bookmarkListDiv.innerHTML="";
+  bookmarks.forEach(b=>{
+    const div=document.createElement('div');
+    div.textContent=`${b.name}: ${b.lat.toFixed(6)}, ${b.lon.toFixed(6)}`;
+    bookmarkListDiv.appendChild(div);
   });
 }
-rideShareBtn.addEventListener('click',()=>{
-  if(!previousPos) return alert("Start tracking first!");
-  generateRandomVehicles(previousPos.lat,previousPos.lon);
-  updateRideVehicles();
-  setInterval(()=>{
-    rideVehicles.forEach(v=>{v.lat+=(Math.random()-0.5)/1000;v.lon+=(Math.random()-0.5)/1000;});
-    updateRideVehicles();
-  },5000);
+
+// ===================== SOS =====================
+document.getElementById('sos').addEventListener('click',()=>{alert("SOS activated! Sending your location...");console.log(previousPos);});
+
+// ===================== Battery Saver =====================
+let batterySaver=false;
+document.getElementById('batterySaverBtn').addEventListener('click',()=>{
+  batterySaver=!batterySaver;
+  document.getElementById('batterySaverBtn').textContent=`Battery Saver: ${batterySaver?"ON":"OFF"}`;
 });
 
-// ===================== Wearable Sync (Web Bluetooth) =====================
-let wearableDevice=null,wearableServer=null,gpsCharacteristic=null,speedCharacteristic=null;
-const WEARABLE_SERVICE_UUID='00001816-0000-1000-8000-00805f9b34fb';
-const GPS_CHARACTERISTIC_UUID='00002a67-0000-1000-8000-00805f9b34fb';
-const SPEED_CHARACTERISTIC_UUID='00002a5b-0000-1000-8000-00805f9b34fb';
-let wearableMarker=null;
-
-async function connectWearable(){
+// ===================== Fetch Street Name =====================
+async function fetchStreetName(lat,lon){
   try{
-    wearableDevice=await navigator.bluetooth.requestDevice({filters:[{services:[WEARABLE_SERVICE_UUID]}]});
-    wearableServer=await wearableDevice.gatt.connect();
-    const service=await wearableServer.getPrimaryService(WEARABLE_SERVICE_UUID);
-    gpsCharacteristic=await service.getCharacteristic(GPS_CHARACTERISTIC_UUID);
-    speedCharacteristic=await service.getCharacteristic(SPEED_CHARACTERISTIC_UUID);
-    await gpsCharacteristic.startNotifications();
-    gpsCharacteristic.addEventListener('characteristicvaluechanged',handleGPSUpdate);
-    await speedCharacteristic.startNotifications();
-    speedCharacteristic.addEventListener('characteristicvaluechanged',handleSpeedUpdate);
-    wearableDataDiv.textContent="Wearable connected: Receiving live data...";
-  }catch(err){console.error(err);wearableDataDiv.textContent="Failed to connect wearable.";}
+    const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+    const data=await res.json();
+    streetP.textContent=`Street: ${data.address.road||data.display_name||"--"}`;
+  }catch(e){streetP.textContent="Street: --";}
 }
-function handleGPSUpdate(event){
-  const value=event.target.value;
-  const lat=value.getFloat32(0,true),lon=value.getFloat32(4,true);
-  wearableDataDiv.innerHTML=`GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-  if(!wearableMarker) wearableMarker=L.marker([lat,lon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[25,25]})}).addTo(map).bindPopup("Wearable Location").openPopup();
-  else wearableMarker.setLatLng([lat,lon]);
-  map.setView([lat,lon],15);
-}
-function handleSpeedUpdate(event){
-  const value=event.target.value;
-  const speed=value.getFloat32(0,true);
-  wearableDataDiv.innerHTML+=`<br>Speed: ${(speed*3.6).toFixed(2)} km/h`;
-}
-connectWearableBtn.addEventListener('click',connectWearable);
-
-// ===================== Initialize =====================
-renderBookmarks();
 </script>
 </body>
 </html>
