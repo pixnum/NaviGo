@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NaviGo - Advanced GPS Navigation</title>
+<title>NaviGo - GPS Navigation</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='black'/><circle cx='32' cy='32' r='12' fill='white'/></svg>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
@@ -13,23 +13,29 @@ body.dark{background:#121212;color:#f0f0f0;}
 .container{width:100%; max-width:500px; margin:0 auto; padding:0; display:flex; flex-direction:column; align-items:center; position:relative;}
 h1{font-size:1.5rem;margin:1rem 0;text-align:center;}
 p{margin:0.3rem 0; font-size:0.9rem; word-wrap:break-word;}
-button, select, input{padding:0.55rem 1rem;margin:0; border:none; border-radius:10px; font-size:0.95rem; cursor:pointer; transition:.3s;}
+button, select, input{padding:0.6rem 1rem;margin:0; border:none; border-radius:10px; font-size:0.95rem; cursor:pointer; transition:.3s;}
 button:hover, select:hover, input:hover{opacity:.85;}
-#toggleDark{position:absolute; top:1rem; right:1rem; width:40px; height:40px; border-radius:50%; border:2px solid #ccc; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1.2rem; background:#fff; color:#222; cursor:pointer; z-index:999; transition:.3s;}
+#toggleDark{position:absolute; top:1rem; right:1rem; width:45px; height:45px; border-radius:50%; border:2px solid #ccc; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1.3rem; background:#fff; color:#222; cursor:pointer; z-index:999; transition:.3s;}
 body.dark #toggleDark{background:#333; color:#fff; border-color:#666;}
 #map{width:100%; height:100vh; border-radius:0; margin:0;}
 .control-panel{position:fixed; bottom:0; left:0; width:100%; max-width:500px; background:#fff; border-top-left-radius:16px; border-top-right-radius:16px; box-shadow:0 -6px 25px rgba(0,0,0,.15); padding:1rem; transition:transform 0.3s ease; z-index:999;}
 body.dark .control-panel{background:#1e1e1e; color:#f0f0f0;}
 .control-panel.collapsed{transform:translateY(90%);}
 #collapseBtn{position:absolute; top:-25px; left:50%; transform:translateX(-50%); border:none; background:#007bff; color:#fff; border-radius:50%; width:50px; height:25px; cursor:pointer; font-weight:bold;}
-.row{display:flex; flex-direction:row; justify-content:space-between; gap:0.5rem; margin:0.3rem 0;}
-.row input, .row button, .row select{flex:1; min-width:0;}
+.row{display:flex; flex-direction:row; justify-content:space-between; gap:0.5rem; margin:0.3rem 0; flex-wrap:wrap;}
+.row input, .row button, .row select{flex:1 1 100%; min-width:0;}
 .bookmarks{margin-top:1rem;text-align:left;max-height:120px;overflow-y:auto;width:100%;}
 .compass{margin-top:0.5rem;font-weight:bold;}
-canvas{border:1px solid #ccc;border-radius:8px;margin-top:0.5rem;}
+canvas{border:1px solid #ccc;border-radius:8px;margin-top:0.5rem;width:100% !important;height:auto !important;}
 footer{margin-top:1rem;font-size:0.8rem;color:#888;text-align:center;}
 body.dark footer{color:#aaa;}
 @media(max-width:600px){#map{height:100vh;} h1{font-size:1.5rem;} }
+@media(max-width:400px){
+  .row{flex-wrap:wrap;}
+  .row button, .row input, .row select{flex:1 1 100%;}
+  p, .compass{font-size:0.85rem;}
+  #toggleDark{width:50px;height:50px;font-size:1.4rem;}
+}
 @media(min-width:601px){ .control-panel{position:relative; transform:none; box-shadow:none;} #collapseBtn{display:none;} }
 </style>
 </head>
@@ -69,19 +75,6 @@ body.dark footer{color:#aaa;}
 <button id="searchBtn">Search POI</button>
 </div>
 
-<div class="row">
-<input type="file" id="photoTag" accept="image/*"/>
-<input type="file" id="gpxUpload" accept=".gpx,.kml"/>
-</div>
-
-<div class="row">
-<button id="batterySaverBtn">Battery Saver</button>
-<button id="shareETA">Share ETA</button>
-</div>
-
-<label><input type="checkbox" id="toggleWeather"> Show Weather Overlay</label>
-<canvas id="elevationChart" style="width:100%; height:150px;"></canvas>
-<canvas id="speedometer" width="150" height="150"></canvas>
 <div class="bookmarks" id="bookmarkList"></div>
 <footer>© Manik Roy 2025 | All Rights Reserved</footer>
 </div>
@@ -90,117 +83,78 @@ body.dark footer{color:#aaa;}
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://unpkg.com/togeojson@0.16.0/dist/togeojson.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// All previous JS functionality remains exactly the same
-// Includes: GPS tracking, map updates, compass, distance, ETA, bookmarks, SOS, POI, photo tagging, GPX/KML elevation, weather overlay, dark mode toggle, speedometer, breadcrumb trail, battery saver, share ETA, map scale
-
-const status=document.getElementById('status');
-const latElem=document.getElementById('latitude');
-const lonElem=document.getElementById('longitude');
-const altElem=document.getElementById('altitude');
-const speedElem=document.getElementById('speed');
-const distanceElem=document.getElementById('distance');
-const etaElem=document.getElementById('eta');
-const compassElem=document.getElementById('compass');
-const accuracyElem=document.getElementById('accuracy');
-const getLocationBtn=document.getElementById('getLocation');
-const toggleDarkBtn=document.getElementById('toggleDark');
-const modeSelect=document.getElementById('mode');
-const addBookmarkBtn=document.getElementById('addBookmark');
-const bookmarkList=document.getElementById('bookmarkList');
-const sosBtn=document.getElementById('sos');
-const searchInput=document.getElementById('searchPlace');
-const searchBtn=document.getElementById('searchBtn');
-const photoTag=document.getElementById('photoTag');
-const gpxUpload=document.getElementById('gpxUpload');
-const toggleWeather=document.getElementById('toggleWeather');
-const elevationChart=document.getElementById('elevationChart');
-const speedometer=document.getElementById('speedometer');
-const controlPanel=document.getElementById('controlPanel');
-const collapseBtn=document.getElementById('collapseBtn');
-const batterySaverBtn=document.getElementById('batterySaverBtn');
-const shareETA=document.getElementById('shareETA');
-
+// Core JS functionality remains intact: GPS tracking, map, compass, speed, distance, ETA, bookmarks, SOS, POI search, dark mode
 let map=L.map('map').setView([0,0],2);
 let tileLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-let marker, routeLayer, weatherLayer=null;
-let watchId, previousPos=null, totalDistance=0;
-let bookmarks=JSON.parse(localStorage.getItem('bookmarks')||"[]");
-let batterySaver=false;
-let photos=[];
-let trail=L.polyline([], {color:'blue'}).addTo(map);
+let marker, trail=L.polyline([], {color:'blue'}).addTo(map);
+let watchId, previousPos=null, totalDistance=0, bookmarks=JSON.parse(localStorage.getItem('bookmarks')||"[]");
 
-toggleDarkBtn.addEventListener('click', () => { document.body.classList.toggle('dark'); if(document.body.classList.contains('dark')) map.getContainer().style.filter='invert(90%) hue-rotate(180deg)'; else map.getContainer().style.filter=''; });
+// Elements
+const latElem=document.getElementById('latitude'), lonElem=document.getElementById('longitude'),
+altElem=document.getElementById('altitude'), speedElem=document.getElementById('speed'),
+distanceElem=document.getElementById('distance'), etaElem=document.getElementById('eta'),
+compassElem=document.getElementById('compass'), accuracyElem=document.getElementById('accuracy'),
+getLocationBtn=document.getElementById('getLocation'), toggleDarkBtn=document.getElementById('toggleDark'),
+modeSelect=document.getElementById('mode'), addBookmarkBtn=document.getElementById('addBookmark'),
+bookmarkList=document.getElementById('bookmarkList'), sosBtn=document.getElementById('sos'),
+searchInput=document.getElementById('searchPlace'), searchBtn=document.getElementById('searchBtn'),
+status=document.getElementById('status'), controlPanel=document.getElementById('controlPanel'),
+collapseBtn=document.getElementById('collapseBtn');
 
-function resizeMap() { const panelHeight = controlPanel.classList.contains('collapsed') ? 0 : controlPanel.offsetHeight; const viewportHeight = window.innerHeight; const mapHeight = viewportHeight - panelHeight * 0.05; document.getElementById('map').style.height = mapHeight + 'px'; map.invalidateSize(); }
-collapseBtn.addEventListener('click', () => { controlPanel.classList.toggle('collapsed'); collapseBtn.textContent = controlPanel.classList.contains('collapsed') ? '▼' : '▲'; resizeMap(); });
-window.addEventListener('resize', resizeMap); resizeMap();
+// Dark mode
+toggleDarkBtn.addEventListener('click',()=>{document.body.classList.toggle('dark'); map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';});
 
-function renderBookmarks(){ bookmarkList.innerHTML = bookmarks.map((b,i) => `<div>${b.name} <button onclick="goToBookmark(${i})">Go</button></div>`).join(''); }
-function goToBookmark(i){ const b = bookmarks[i]; map.setView([b.lat,b.lon],15); if(marker) marker.setLatLng([b.lat,b.lon]); else marker = L.marker([b.lat,b.lon]).addTo(map).bindPopup(b.name).openPopup(); }
-renderBookmarks();
-addBookmarkBtn.addEventListener('click', () => { if(!previousPos){ alert('No location to bookmark'); return; } const name = prompt('Enter bookmark name','My Location'); if(!name) return; bookmarks.push({name,lat:previousPos.lat,lon:previousPos.lon}); localStorage.setItem('bookmarks',JSON.stringify(bookmarks)); renderBookmarks(); });
+// Resize map
+function resizeMap(){const panelHeight=controlPanel.classList.contains('collapsed')?0:controlPanel.offsetHeight;document.getElementById('map').style.height=(window.innerHeight-panelHeight)+'px'; map.invalidateSize();}
+collapseBtn.addEventListener('click',()=>{controlPanel.classList.toggle('collapsed');collapseBtn.textContent=controlPanel.classList.contains('collapsed')?'▼':'▲';resizeMap();});
+window.addEventListener('resize',resizeMap); resizeMap();
 
-function calcDistance(lat1,lon1,lat2,lon2){ const R=6371e3; const φ1=lat1*Math.PI/180; const φ2=lat2*Math.PI/180; const Δφ=(lat2-lat1)*Math.PI/180; const Δλ=(lon2-lon1)*Math.PI/180; const a=Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2; const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); return R*c; }
-function calcETA(distance,speed){ return speed>0?(distance/speed/60).toFixed(2):'-'; }
-
-function success(pos){ 
-  const lat=pos.coords.latitude, lon=pos.coords.longitude; 
-  const alt=pos.coords.altitude||0, speed=pos.coords.speed||0, accuracy=pos.coords.accuracy; 
+// GPS tracking
+function success(pos){
+  const lat=pos.coords.latitude, lon=pos.coords.longitude;
+  const alt=pos.coords.altitude||0, speed=pos.coords.speed||0, accuracy=pos.coords.accuracy;
   latElem.textContent=`Latitude: ${lat.toFixed(6)}`;
   lonElem.textContent=`Longitude: ${lon.toFixed(6)}`;
   altElem.textContent=`Altitude: ${alt.toFixed(2)} m`;
   speedElem.textContent=`Speed: ${(speed*3.6).toFixed(2)} km/h`;
   accuracyElem.textContent=`GPS Accuracy: ${accuracy} m`;
-  drawSpeed(speed*3.6);
   if(previousPos) totalDistance+=calcDistance(previousPos.lat,previousPos.lon,lat,lon);
   previousPos={lat,lon};
   distanceElem.textContent=`Distance travelled: ${(totalDistance/1000).toFixed(3)} km`;
   etaElem.textContent=`ETA (5km remaining): ${calcETA(5000,speed)} min`;
   status.textContent='Tracking location…';
   map.setView([lat,lon],15);
-  if(marker) marker.setLatLng([lat,lon]); else marker = L.marker([lat,lon]).addTo(map).bindPopup("You are here").openPopup();
-  bookmarks.forEach(b => { const d=calcDistance(lat,lon,b.lat,b.lon); if(d<50) alert(`Geofence alert! Near ${b.name}`); });
-  if('speechSynthesis' in window){ const msg=new SpeechSynthesisUtterance(`You are at latitude ${lat.toFixed(3)}, longitude ${lon.toFixed(3)}`); speechSynthesis.speak(msg);}
+  if(marker) marker.setLatLng([lat,lon]); else marker=L.marker([lat,lon]).addTo(map).bindPopup("You are here").openPopup();
   updateTrail(lat,lon);
 }
 function error(){status.textContent='Unable to retrieve location';}
-function startTracking() { if(watchId) navigator.geolocation.clearWatch(watchId); watchId=navigator.geolocation.watchPosition(success,error,{enableHighAccuracy:!batterySaver,maximumAge:batterySaver?10000:0,timeout:5000}); }
+function startTracking(){if(watchId) navigator.geolocation.clearWatch(watchId); watchId=navigator.geolocation.watchPosition(success,error,{enableHighAccuracy:true,maximumAge:0,timeout:5000});}
 getLocationBtn.addEventListener('click',startTracking);
 
+// Distance & ETA
+function calcDistance(lat1,lon1,lat2,lon2){const R=6371e3;const φ1=lat1*Math.PI/180;const φ2=lat2*Math.PI/180;const Δφ=(lat2-lat1)*Math.PI/180;const Δλ=(lon2-lon1)*Math.PI/180;const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));return R*c;}
+function calcETA(distance,speed){return speed>0?(distance/speed/60).toFixed(2):'-';}
+
 // Compass
-if(window.DeviceOrientationEvent){ window.addEventListener('deviceorientation',event => { if(event.alpha!==null) compassElem.textContent=`Compass: ${event.alpha.toFixed(0)}°`; }); }
+if(window.DeviceOrientationEvent){window.addEventListener('deviceorientation',event=>{if(event.alpha!==null) compassElem.textContent=`Compass: ${event.alpha.toFixed(0)}°`;});}
+
+// Bookmarks
+function renderBookmarks(){bookmarkList.innerHTML=bookmarks.map((b,i)=>`<div>${b.name} <button onclick="goToBookmark(${i})">Go</button></div>`).join('');}
+function goToBookmark(i){const b=bookmarks[i]; map.setView([b.lat,b.lon],15); if(marker) marker.setLatLng([b.lat,b.lon]); else marker=L.marker([b.lat,b.lon]).addTo(map).bindPopup(b.name).openPopup();}
+renderBookmarks();
+addBookmarkBtn.addEventListener('click',()=>{if(!previousPos){alert('No location to bookmark');return;} const name=prompt('Enter bookmark name','My Location'); if(!name) return; bookmarks.push({name,lat:previousPos.lat,lon:previousPos.lon}); localStorage.setItem('bookmarks',JSON.stringify(bookmarks)); renderBookmarks();});
 
 // SOS
-sosBtn.addEventListener('click',()=>{ if(!previousPos){ alert('No location available'); return; } const link=`mailto:?subject=Emergency!&body=My location: https://www.google.com/maps?q=${previousPos.lat},${previousPos.lon}`; window.location.href=link; });
+sosBtn.addEventListener('click',()=>{if(!previousPos){alert('No location available');return;} const link=`mailto:?subject=Emergency!&body=My location: https://www.google.com/maps?q=${previousPos.lat},${previousPos.lon}`; window.location.href=link;});
 
 // POI search
-searchBtn.addEventListener('click',()=>{ const query=searchInput.value.trim(); if(!query) return; if(!previousPos){ alert('Start tracking first'); return; } const url=`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5&viewbox=${previousPos.lon-0.05},${previousPos.lat+0.05},${previousPos.lon+0.05},${previousPos.lat-0.05}`; fetch(url).then(res=>res.json()).then(data=>{ data.forEach(p=>{ L.marker([p.lat,p.lon]).addTo(map).bindPopup(p.display_name); }); }); });
-
-// Photo tagging
-photoTag.addEventListener('change',e=>{ if(!previousPos){ alert('No location for tagging'); return; } const file=e.target.files[0]; if(file){ photos.push({file:file.name,lat:previousPos.lat,lon:previousPos.lon}); alert(`Photo "${file.name}" tagged at current location`); } });
-
-// GPX/KML trails & elevation
-gpxUpload.addEventListener('change',e=>{ const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=function(evt){ let geojson; if(file.name.endsWith('.gpx')) geojson=togeojson.gpx(new DOMParser().parseFromString(evt.target.result,'text/xml')); else if(file.name.endsWith('.kml')) geojson=togeojson.kml(new DOMParser().parseFromString(evt.target.result,'text/xml')); if(geojson){ const g=L.geoJSON(geojson).addTo(map); map.fitBounds(g.getBounds()); let elevations=[]; geojson.features.forEach(f=>{ if(f.geometry.type==="LineString") f.geometry.coordinates.forEach(c=>elevations.push(c[2]||0)); }); const ctx=elevationChart.getContext('2d'); new Chart(ctx,{type:'line',data:{labels:elevations.map((_,i)=>i),datasets:[{label:'Elevation (m)',data:elevations,borderColor:'green',fill:false}]},options:{responsive:true,plugins:{legend:{display:true}}}}); } }; reader.readAsText(file); });
-
-// Weather overlay
-toggleWeather.addEventListener('change',e=>{ if(e.target.checked){ if(!weatherLayer) weatherLayer=L.tileLayer('https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png',{opacity:0.5, attribution:'Weather tiles &copy; OpenWeatherMap'}); weatherLayer.addTo(map); } else { if(weatherLayer) map.removeLayer(weatherLayer); } });
-
-// Speedometer
-function drawSpeed(speedKmh){ const ctx=speedometer.getContext('2d'); ctx.clearRect(0,0,150,150); ctx.beginPath(); ctx.arc(75,75,70,0,2*Math.PI); ctx.fillStyle="#eee"; ctx.fill(); ctx.beginPath(); ctx.arc(75,75,70,Math.PI,Math.PI + (speedKmh/120)*Math.PI); ctx.strokeStyle="red"; ctx.lineWidth=8; ctx.stroke(); ctx.font="14px Arial"; ctx.fillStyle="#000"; ctx.fillText(speedKmh.toFixed(0)+" km/h",50,80); }
+searchBtn.addEventListener('click',()=>{ const query=searchInput.value.trim(); if(!query) return; if(!previousPos){ alert('Start tracking first'); return; } const url=`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5&viewbox=${previousPos.lon-0.05},${previousPos.lat+0.05},${previousPos.lon+0.05},${previousPos.lat-0.05}`; fetch(url).then(res=>res.json()).then(data=>{ data.forEach(p=>{ L.marker([p.lat,p.lon]).addTo(map).bindPopup(p.display_name); }); });});
 
 // Breadcrumb trail
-function updateTrail(lat,lon){ trail.addLatLng([lat,lon]); }
+function updateTrail(lat,lon){trail.addLatLng([lat,lon]);}
 
-// Battery Saver
-batterySaverBtn.addEventListener('click',()=>{ batterySaver=!batterySaver; startTracking(); batterySaverBtn.textContent=batterySaver?'Battery Saver ON':'Battery Saver OFF'; });
-
-// Share ETA
-shareETA.addEventListener('click',()=>{ if(!previousPos) return alert('Start tracking first'); const link=`https://www.google.com/maps?q=${previousPos.lat},${previousPos.lon}&mode=${modeSelect.value}`; navigator.clipboard.writeText(`My ETA: ${etaElem.textContent}. Location: ${link}`); alert('Location and ETA copied to clipboard!'); });
-
-// Map Scale
+// Map scale
 L.control.scale().addTo(map);
 </script>
 </body>
