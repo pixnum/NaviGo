@@ -40,7 +40,7 @@ body.dark footer{color:#aaa;border-color:#555;}
 <p id="altitude"></p>
 <p id="speed"></p>
 <p id="accuracy"></p>
-<p class="compass" id="compass">Compass: --°</p>
+<p class="compass" id="compass">Compass: --° (--)</p>
 <p id="street">Street: --</p>
 
 <div class="row">
@@ -77,7 +77,7 @@ body.dark footer{color:#aaa;border-color:#555;}
 <script>
 // Map setup
 let map = L.map('map').setView([0,0],2);
-let tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 let marker, routeLine=L.polyline([], {color:'blue'}).addTo(map);
 let watchId = null, previousPos=null, totalDistance=0, destinationPos=null;
 let bookmarks = JSON.parse(localStorage.getItem('bookmarks')||"[]");
@@ -95,11 +95,45 @@ sosBtn = document.getElementById('sos'), bookmarkList = document.getElementById(
 // Dark mode toggle
 toggleDarkBtn.addEventListener('click',()=>{document.body.classList.toggle('dark');map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';});
 
-// Compass
+// Compass with direction names
+function getDirectionName(deg){
+  const directions = ['N','NE','E','SE','S','SW','W','NW'];
+  return directions[Math.round(deg/45)%8];
+}
 if(window.DeviceOrientationEvent){
   window.addEventListener('deviceorientation',event=>{
-    if(event.alpha!==null) compassElem.textContent=`Compass: ${event.alpha.toFixed(0)}°`;
+    if(event.alpha!==null){
+      let heading = event.alpha;
+      compassElem.textContent = `Compass: ${heading.toFixed(0)}° (${getDirectionName(heading)})`;
+    }
   });
+}
+
+// Distance calculation
+function calcDistance(lat1,lon1,lat2,lon2){
+  const R=6371e3, φ1=lat1*Math.PI/180, φ2=lat2*Math.PI/180, Δφ=(lat2-lat1)*Math.PI/180, Δλ=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  return R*c;
+}
+
+// Update street name
+function updateStreetName(lat,lon){
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+    .then(res=>res.json()).then(data=>{streetElem.textContent=`Street: ${data.address.road||'--'}`;}).catch(()=>{streetElem.textContent='Street: --';});
+}
+
+// Voice guidance
+let lastSpeakTime = 0;
+function speakDistance(lat1,lon1,lat2,lon2){
+  if(!window.speechSynthesis) return;
+  const now = Date.now();
+  if(now - lastSpeakTime < 5000) return;
+  lastSpeakTime = now;
+  const distanceKm = calcDistance(lat1,lon1,lat2,lon2)/1000;
+  const msg = new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);
+  msg.lang = 'en-US';
+  window.speechSynthesis.speak(msg);
 }
 
 // Start Tracking
@@ -138,27 +172,13 @@ function startTracking() {
 }
 getLocationBtn.addEventListener('click',startTracking);
 
-// Distance
-function calcDistance(lat1,lon1,lat2,lon2){
-  const R=6371e3, φ1=lat1*Math.PI/180, φ2=lat2*Math.PI/180, Δφ=(lat2-lat1)*Math.PI/180, Δλ=(lon2-lon1)*Math.PI/180;
-  const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  return R*c;
-}
-
-// Street name
-function updateStreetName(lat,lon){
-  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
-    .then(res=>res.json()).then(data=>{streetElem.textContent=`Street: ${data.address.road||'--'}`;}).catch(()=>{streetElem.textContent='Street: --';});
-}
-
-// Route & navigation
+// Update route
 function updateRoute(lat,lon){
   if(!destinationPos) return;
   routeLine.setLatLng([[lat,lon],[destinationPos.lat,destinationPos.lon]]);
   const dist=calcDistance(lat,lon,destinationPos.lat,destinationPos.lon);
   status.textContent=`Distance to destination: ${(dist/1000).toFixed(3)} km`;
-  speakTurn(lat,lon,destinationPos.lat,destinationPos.lon);
+  speakDistance(lat,lon,destinationPos.lat,destinationPos.lon);
 }
 
 // Navigate to destination
@@ -175,13 +195,6 @@ navigateBtn.addEventListener('click',()=>{
       } else alert('Destination not found');
     });
 });
-
-// Voice guidance
-function speakTurn(lat1,lon1,lat2,lon2){
-  if(!window.speechSynthesis) return;
-  const msg=new SpeechSynthesisUtterance(`You are ${(calcDistance(lat1,lon1,lat2,lon2)/1000).toFixed(1)} kilometers from destination`);
-  speechSynthesis.speak(msg);
-}
 
 // Bookmarks
 function renderBookmarks(){bookmarkList.innerHTML=bookmarks.map((b,i)=>`<div>${b.name} <button onclick="goToBookmark(${i})">Go</button> <button onclick="deleteBookmark(${i})">Delete</button></div>`).join('');}
