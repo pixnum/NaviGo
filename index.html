@@ -28,7 +28,7 @@ body.dark #toggleDark {background:#333;color:#fff;border-color:#666;}
 #status,p{font-size:0.85rem;word-wrap:break-word;}
 .compass{font-weight:bold;}
 #calibrationHint{color:#d9534f;font-weight:bold;display:none;}
-#publicTransport,#trafficAlerts,#poiList{font-size:0.85rem;margin-top:0.3rem;max-height:100px;overflow-y:auto;}
+#publicTransport,#trafficAlerts,#poiList,#wearableData{font-size:0.85rem;margin-top:0.3rem;max-height:100px;overflow-y:auto;}
 footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888;border-top:1px solid #ccc;position:sticky;bottom:0;background:#fff;z-index:999;}
 body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 #zoomControls{position:absolute;top:60px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:1002;}
@@ -93,7 +93,7 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 
     <div class="row">
       <button id="rideShareBtn">Ride-Sharing</button>
-      <button id="wearableSyncBtn">Sync to Wearable</button>
+      <button id="connectWearableBtn">Connect Wearable</button>
     </div>
 
     <div class="row">
@@ -105,6 +105,7 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
     <div id="publicTransport"></div>
     <div id="trafficAlerts"></div>
     <div id="poiList"></div>
+    <div id="wearableData"></div>
     <div class="bookmarks" id="bookmarkList"></div>
   </div>
   <footer>© Manik Roy 2025 | All Rights Reserved</footer>
@@ -129,13 +130,14 @@ destinationInput=document.getElementById('destination'), navigateBtn=document.ge
 addBookmarkBtn=document.getElementById('addBookmark'), clearMarkersBtn=document.getElementById('clearMarkers'),
 sosBtn=document.getElementById('sos'), bookmarkList=document.getElementById('bookmarkList'),
 calibrationHint=document.getElementById('calibrationHint'), batteryBtn=document.getElementById('batterySaverBtn'),
-rideShareBtn=document.getElementById('rideShareBtn'), wearableBtn=document.getElementById('wearableSyncBtn'),
+rideShareBtn=document.getElementById('rideShareBtn'), connectWearableBtn=document.getElementById('connectWearableBtn'),
 publicTransportDiv=document.getElementById('publicTransport'),
 trafficAlertsDiv=document.getElementById('trafficAlerts'),
 poiListDiv=document.getElementById('poiList'),
 loadPOIsBtn=document.getElementById('loadPOIs'),
 loadTrafficBtn=document.getElementById('loadTraffic'),
-loadPublicTransportBtn=document.getElementById('loadPublicTransport');
+loadPublicTransportBtn=document.getElementById('loadPublicTransport'),
+wearableDataDiv=document.getElementById('wearableData');
 
 let batterySaver=false;
 let gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:10000};
@@ -170,25 +172,12 @@ function enableCompass(){
   } else{window.addEventListener('deviceorientationabsolute',handleOrientation,true);}
 }
 
-// ===================== Distance =====================
+// ===================== Distance & Voice =====================
 function calcDistance(lat1,lon1,lat2,lon2){const R=6371e3,φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180,Δφ=(lat2-lat1)*Math.PI/180,Δλ=(lon2-lon1)*Math.PI/180;const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));return R*c;}
 async function updateStreetName(lat,lon){try{let res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);let data=await res.json();streetElem.textContent=`Street: ${data.address.road||'--'}`;}catch(e){streetElem.textContent='Street: --';}}
+function speakDistance(lat1,lon1,lat2,lon2){if(!window.speechSynthesis)return;const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;if(lastDistance!==null&&Math.abs(distanceKm-lastDistance)<0.05)return;lastDistance=distanceKm;const now=Date.now();if(now-lastSpeakTime<3000)return;lastSpeakTime=now;window.speechSynthesis.cancel();const msg=new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);msg.lang='en-US';window.speechSynthesis.speak(msg);}
 
-// ===================== Voice Guidance =====================
-function speakDistance(lat1,lon1,lat2,lon2){
-  if(!window.speechSynthesis)return;
-  const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;
-  if(lastDistance!==null&&Math.abs(distanceKm-lastDistance)<0.05)return;
-  lastDistance=distanceKm;
-  const now=Date.now();
-  if(now-lastSpeakTime<3000)return;
-  lastSpeakTime=now;
-  window.speechSynthesis.cancel();
-  const msg=new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);
-  msg.lang='en-US';window.speechSynthesis.speak(msg);
-}
-
-// ===================== Battery Saver =====================
+// ===================== Battery =====================
 batteryBtn.addEventListener('click',()=>{
   batterySaver=!batterySaver;
   if(batterySaver){gpsOptions.enableHighAccuracy=false;gpsOptions.maximumAge=30000;batteryBtn.textContent='Battery Saver: ON';}
@@ -225,7 +214,6 @@ function startTracking(){
     gpsOptions
   );
 }
-
 getLocationBtn.addEventListener('click',()=>{startTracking(); enableCompass();});
 
 // ===================== Navigation =====================
@@ -301,9 +289,70 @@ loadPublicTransportBtn.addEventListener('click',async()=>{
   }catch(e){publicTransportDiv.textContent="No nearby public transport stops";}
 });
 
-// ===================== Ride-Sharing & Wearable =====================
-rideShareBtn.addEventListener('click',()=>{alert("Ride-sharing integration (optional, demo)");});
-wearableBtn.addEventListener('click',()=>{alert("Wearable sync (optional, demo)");});
+// ===================== Ride-Sharing Real-Time =====================
+let rideVehicles=[];
+function generateRandomVehicles(lat, lon, count=5){
+  rideVehicles=[];
+  for(let i=0;i<count;i++){
+    const offsetLat=(Math.random()-0.5)/100;
+    const offsetLon=(Math.random()-0.5)/100;
+    rideVehicles.push({id:i,lat:lat+offsetLat,lon:lon+offsetLon,marker:null});
+  }
+}
+function updateRideVehicles(){
+  if(!previousPos) return;
+  rideVehicles.forEach(v=>{
+    if(v.marker)v.marker.setLatLng([v.lat,v.lon]);
+    else{
+      v.marker=L.marker([v.lat,v.lon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[25,25]})}).addTo(map).bindPopup(`Ride Vehicle #${v.id}`);
+    }
+  });
+}
+rideShareBtn.addEventListener('click',()=>{
+  if(!previousPos) return alert("Start tracking first!");
+  generateRandomVehicles(previousPos.lat,previousPos.lon);
+  updateRideVehicles();
+  setInterval(()=>{
+    rideVehicles.forEach(v=>{v.lat+=(Math.random()-0.5)/1000;v.lon+=(Math.random()-0.5)/1000;});
+    updateRideVehicles();
+  },5000);
+});
+
+// ===================== Wearable Sync (Web Bluetooth) =====================
+let wearableDevice=null,wearableServer=null,gpsCharacteristic=null,speedCharacteristic=null;
+const WEARABLE_SERVICE_UUID='00001816-0000-1000-8000-00805f9b34fb';
+const GPS_CHARACTERISTIC_UUID='00002a67-0000-1000-8000-00805f9b34fb';
+const SPEED_CHARACTERISTIC_UUID='00002a5b-0000-1000-8000-00805f9b34fb';
+let wearableMarker=null;
+
+async function connectWearable(){
+  try{
+    wearableDevice=await navigator.bluetooth.requestDevice({filters:[{services:[WEARABLE_SERVICE_UUID]}]});
+    wearableServer=await wearableDevice.gatt.connect();
+    const service=await wearableServer.getPrimaryService(WEARABLE_SERVICE_UUID);
+    gpsCharacteristic=await service.getCharacteristic(GPS_CHARACTERISTIC_UUID);
+    speedCharacteristic=await service.getCharacteristic(SPEED_CHARACTERISTIC_UUID);
+    await gpsCharacteristic.startNotifications();
+    gpsCharacteristic.addEventListener('characteristicvaluechanged',handleGPSUpdate);
+    await speedCharacteristic.startNotifications();
+    speedCharacteristic.addEventListener('characteristicvaluechanged',handleSpeedUpdate);
+    wearableDataDiv.textContent="Wearable connected: Receiving live data...";
+  }catch(err){console.error(err);wearableDataDiv.textContent="Failed to connect wearable.";}
+}
+function handleGPSUpdate(event){
+  const value=event.target.value;
+  const lat=value.getFloat32(0,true),lon=value.getFloat32(4,true);
+  wearableDataDiv.innerHTML=`GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  if(!wearableMarker) wearableMarker=L.marker([lat,lon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[25,25]})}).addTo(map).bindPopup("Wearable Location").openPopup();
+  else wearableMarker.setLatLng([lat,lon]);
+  map.setView([lat,lon],15);
+}
+function handleSpeedUpdate(event){
+  const value=event.target.value;
+  const speed=value.getFloat32(0,true);
+  wearableDataDiv.innerHTML+=`<br>Speed: ${(speed*3.6).toFixed(2)} km/h`;
+}
+connectWearableBtn.addEventListener('click',connectWearable);
 
 // ===================== Initialize =====================
 renderBookmarks();
