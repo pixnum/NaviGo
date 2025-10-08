@@ -26,7 +26,7 @@ body.dark #toggleDark {background:#333;color:#fff;border-color:#666;}
 #status,p{font-size:0.85rem;word-wrap:break-word;}
 .compass{font-weight:bold;}
 #calibrationHint{color:#d9534f;font-weight:bold;display:none;}
-#publicTransport,#trafficAlerts,#poiList{font-size:0.85rem;margin-top:0.3rem;}
+#publicTransport,#trafficAlerts,#poiList{font-size:0.85rem;margin-top:0.3rem;max-height:100px;overflow-y:auto;}
 footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888;border-top:1px solid #ccc;position:sticky;bottom:0;background:#fff;z-index:999;}
 body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 #zoomControls{position:absolute;top:60px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:1002;}
@@ -93,6 +93,7 @@ body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 <div class="row">
 <button id="loadPOIs">Load Nearby POIs</button>
 <button id="loadTraffic">Load Traffic Alerts</button>
+<button id="loadPublicTransport">Load Public Transport</button>
 </div>
 
 <div id="publicTransport"></div>
@@ -128,7 +129,9 @@ rideShareBtn=document.getElementById('rideShareBtn'), wearableBtn=document.getEl
 publicTransportDiv=document.getElementById('publicTransport'),
 trafficAlertsDiv=document.getElementById('trafficAlerts'),
 poiListDiv=document.getElementById('poiList'),
-loadPOIsBtn=document.getElementById('loadPOIs'), loadTrafficBtn=document.getElementById('loadTraffic');
+loadPOIsBtn=document.getElementById('loadPOIs'),
+loadTrafficBtn=document.getElementById('loadTraffic'),
+loadPublicTransportBtn=document.getElementById('loadPublicTransport');
 
 let batterySaver=false;
 let gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:10000};
@@ -250,7 +253,27 @@ loadPOIsBtn.addEventListener('click',async ()=>{
   }catch(e){poiListDiv.textContent="No POIs found";}
 });
 
-loadTrafficBtn.addEventListener('click',()=>{trafficAlertsDiv.textContent="Traffic alerts placeholder";});
+// Traffic alerts real-time
+loadTrafficBtn.addEventListener('click',async ()=>{
+  if(!previousPos) return alert("Start tracking first");
+  trafficAlertsDiv.textContent="Loading traffic alerts...";
+  try{
+    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];way(around:1000,${previousPos.lat},${previousPos.lon})[highway][maxspeed];out;`);
+    let data=await res.json();trafficAlertsDiv.textContent="";
+    data.elements.forEach(e=>{const p=document.createElement('div');p.textContent=`Road segment id:${e.id}, maxspeed:${e.tags.maxspeed||'--'} km/h`;trafficAlertsDiv.appendChild(p);});
+  }catch(e){trafficAlertsDiv.textContent="No traffic alerts";}
+});
+
+// Public transport real-time
+loadPublicTransportBtn.addEventListener('click',async ()=>{
+  if(!previousPos) return alert("Start tracking first");
+  publicTransportDiv.textContent="Loading nearby stops...";
+  try{
+    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[public_transport=platform];out;`);
+    let data=await res.json();publicTransportDiv.textContent="";
+    data.elements.forEach(e=>{const p=document.createElement('div');p.textContent=`Stop: ${e.tags.name||'Unnamed'}, Lat:${e.lat.toFixed(5)}, Lon:${e.lon.toFixed(5)}`;publicTransportDiv.appendChild(p);});
+  }catch(e){publicTransportDiv.textContent="No nearby public transport stops";}
+});
 
 // Initialize bookmarks
 renderBookmarks();
