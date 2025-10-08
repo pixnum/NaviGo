@@ -12,10 +12,10 @@ html,body{height:100%;width:100%;background:#f0f0f0;color:#222;display:flex;just
 body.dark{background:#121212;color:#f0f0f0;}
 .container{width:100%;max-width:500px;margin:0 auto;display:flex;flex-direction:column;align-items:center;border:2px solid #ccc;border-radius:16px;position:relative;background:#fff;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.15);}
 body.dark .container{background:#1e1e1e;border-color:#555;}
-h1{font-size:1.5rem;margin:1rem 0 0.5rem 0;text-align:left;display:flex;align-items:center;gap:0.5rem;z-index:1;}
-#toggleDark{position:absolute; top:1rem; right:1rem; width:45px; height:45px; border-radius:50%; border:2px solid #ccc; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1.3rem; background:#fff; color:#222; cursor:pointer; z-index:999; transition:.3s;}
+h1{font-size:1.5rem;margin:1rem 0 0.5rem 0;text-align:left;display:flex;align-items:center;gap:0.5rem;position:relative; z-index:1000;}
+#toggleDark{position:absolute; top:1rem; right:1rem; width:45px; height:45px; border-radius:50%; border:2px solid #ccc; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1.3rem; background:#fff; color:#222; cursor:pointer; z-index:1001; transition:.3s;}
 body.dark #toggleDark{background:#333; color:#fff; border-color:#666;}
-#map{width:100%; height:400px; max-height:400px;}
+#map{width:100%; height:350px; max-height:350px; margin-top:10px;}
 .control-panel{width:100%; padding:0.5rem 1rem; display:flex; flex-direction:column; gap:0.5rem;}
 .row{display:flex; flex-direction:row; justify-content:space-between; gap:0.5rem; flex-wrap:wrap;}
 .row input, .row button, .row select{flex:1 1 48%; min-width:0; padding:0.5rem 0.7rem; border-radius:10px; border:1px solid #ccc; font-size:0.95rem;}
@@ -24,10 +24,10 @@ body.dark #toggleDark{background:#333; color:#fff; border-color:#666;}
 #status,p{font-size:0.85rem; word-wrap:break-word;}
 .compass{font-weight:bold;}
 #calibrationHint{color:#d9534f;font-weight:bold;display:none;}
-footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888;border-top:1px solid #ccc;position:sticky;bottom:0;background:#fff;}
+footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888;border-top:1px solid #ccc;position:sticky;bottom:0;background:#fff; z-index:999;}
 body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
-.leaflet-control-zoom {top:50px !important; right:10px !important;}
-@media(max-width:500px){#map{height:350px;}h1{font-size:1.3rem;}}
+.leaflet-control-zoom {top:70px !important; right:10px !important;} /* moved below header */
+@media(max-width:500px){#map{height:300px;}h1{font-size:1.3rem;}}
 </style>
 </head>
 <body>
@@ -103,38 +103,34 @@ calibrationHint = document.getElementById('calibrationHint'), batteryBtn = docum
 // Dark mode toggle
 toggleDarkBtn.addEventListener('click',()=>{document.body.classList.toggle('dark');map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';});
 
-// Compass with calibration hint
+// Compass
 function getDirectionName(deg){const directions=['N','NE','E','SE','S','SW','W','NW'];return directions[Math.round(deg/45)%8];}
-let compassHeading=0, lastHeading=null, unstableCount=0;
-
+let compassHeading=0,lastHeading=null,unstableCount=0;
 function handleOrientation(event){
   let alpha = event.alpha;
   if(event.absolute && alpha !== null){
     compassHeading = 360 - alpha;
     compassElem.textContent = `Compass: ${compassHeading.toFixed(0)}° (${getDirectionName(compassHeading)})`;
-    if(lastHeading!==null && Math.abs(compassHeading-lastHeading)>20){unstableCount++;} else{unstableCount=0;}
+    if(lastHeading!==null && Math.abs(compassHeading-lastHeading)>20){unstableCount++;}else{unstableCount=0;}
     lastHeading=compassHeading;
-    calibrationHint.style.display = (unstableCount>=3)?'block':'none';
+    calibrationHint.style.display=(unstableCount>=3)?'block':'none';
   }
 }
-
 function enableCompass(){
   if(typeof DeviceOrientationEvent.requestPermission==='function'){
-    DeviceOrientationEvent.requestPermission().then(r=>{if(r==='granted') window.addEventListener('deviceorientationabsolute',handleOrientation,true); else alert('Compass permission denied');}).catch(console.error);
+    DeviceOrientationEvent.requestPermission().then(r=>{if(r==='granted')window.addEventListener('deviceorientationabsolute',handleOrientation,true);}).catch(console.error);
   } else{window.addEventListener('deviceorientationabsolute',handleOrientation,true);}
 }
 
-// Distance calculation
+// Distance
 function calcDistance(lat1,lon1,lat2,lon2){const R=6371e3,φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180,Δφ=(lat2-lat1)*Math.PI/180,Δλ=(lon2-lon1)*Math.PI/180;const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));return R*c;}
-
-// Update street name
 function updateStreetName(lat,lon){fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`).then(res=>res.json()).then(data=>{streetElem.textContent=`Street: ${data.address.road||'--'}`;}).catch(()=>{streetElem.textContent='Street: --';});}
 
-// Voice guidance
+// Voice
 let lastSpeakTime=0,lastDistance=null;
-function speakDistance(lat1,lon1,lat2,lon2){if(!window.speechSynthesis)return;const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;if(lastDistance!==null && Math.abs(distanceKm-lastDistance)<0.05)return;lastDistance=distanceKm;const now=Date.now();if(now-lastSpeakTime<3000)return;lastSpeakTime=now;window.speechSynthesis.cancel();const msg=new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);msg.lang='en-US';window.speechSynthesis.speak(msg);}
+function speakDistance(lat1,lon1,lat2,lon2){if(!window.speechSynthesis)return;const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;if(lastDistance!==null&&Math.abs(distanceKm-lastDistance)<0.05)return;lastDistance=distanceKm;const now=Date.now();if(now-lastSpeakTime<3000)return;lastSpeakTime=now;window.speechSynthesis.cancel();const msg=new SpeechSynthesisUtterance(`You are ${distanceKm.toFixed(1)} kilometers from your destination`);msg.lang='en-US';window.speechSynthesis.speak(msg);}
 
-// Battery Saver Mode
+// Battery Saver
 let batterySaver=false;
 let gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:10000};
 batteryBtn.addEventListener('click',()=>{
@@ -145,15 +141,15 @@ batteryBtn.addEventListener('click',()=>{
   startTracking();
 });
 
-// Start Tracking
+// Tracking
 function startTracking(){
   if(!navigator.geolocation){alert("Geolocation not supported");status.textContent="Geolocation not supported";return;}
   if(watchId) navigator.geolocation.clearWatch(watchId);
   watchId = navigator.geolocation.watchPosition(
     function success(pos){
-      if(!pos||!pos.coords) return;
-      const lat=pos.coords.latitude, lon=pos.coords.longitude;
-      const alt=pos.coords.altitude||0, speed=pos.coords.speed||0, accuracy=pos.coords.accuracy||0;
+      if(!pos||!pos.coords)return;
+      const lat=pos.coords.latitude,lon=pos.coords.longitude;
+      const alt=pos.coords.altitude||0,speed=pos.coords.speed||0,accuracy=pos.coords.accuracy||0;
       status.textContent="Tracking location…";
       latElem.textContent=`Latitude: ${lat.toFixed(6)}`;
       lonElem.textContent=`Longitude: ${lon.toFixed(6)}`;
@@ -168,36 +164,19 @@ function startTracking(){
       updateStreetName(lat,lon);
       updateRoute(lat,lon);
     },
-    function error(err){
-      switch(err.code){
-        case err.PERMISSION_DENIED: alert("Location permission denied");status.textContent="Permission denied"; break;
-        case err.POSITION_UNAVAILABLE: alert("Location unavailable");status.textContent="Location unavailable"; break;
-        case err.TIMEOUT: alert("Location request timed out");status.textContent="Timeout"; break;
-        default: alert("Error: "+err.message);status.textContent="Error getting location";
-      }
-    },
+    function error(err){switch(err.code){case err.PERMISSION_DENIED: alert("Location permission denied");status.textContent="Permission denied"; break; case err.POSITION_UNAVAILABLE: alert("Location unavailable");status.textContent="Location unavailable"; break; case err.TIMEOUT: alert("Location request timed out");status.textContent="Timeout"; break; default: alert("Error: "+err.message);status.textContent="Error getting location";}},
     gpsOptions
   );
 }
+getLocationBtn.addEventListener('click',()=>{startTracking(); enableCompass();});
 
-getLocationBtn.addEventListener('click',()=>{
-  startTracking();
-  enableCompass();
-});
-
-// Navigation & Route
+// Navigation, bookmarks, SOS, clear markers
 navigateBtn.addEventListener('click',()=>{
   const dest=destinationInput.value.trim();
   if(!dest){alert('Enter destination');return;}
   fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dest)}&limit=1`)
     .then(res=>res.json())
-    .then(data=>{
-      if(data.length>0){
-        destinationPos={lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon)};
-        L.marker([destinationPos.lat,destinationPos.lon]).addTo(map).bindPopup(dest).openPopup();
-        if(previousPos) updateRoute(previousPos.lat,previousPos.lon);
-      } else alert('Destination not found');
-    });
+    .then(data=>{if(data.length>0){destinationPos={lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon)};L.marker([destinationPos.lat,destinationPos.lon]).addTo(map).bindPopup(dest).openPopup();if(previousPos) updateRoute(previousPos.lat,previousPos.lon);}else alert('Destination not found');});
 });
 
 // Bookmarks
