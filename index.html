@@ -8,17 +8,19 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif;}
-html,body{height:100%;width:100%;background:#f0f0f0;color:#222;display:flex;justify-content:center;align-items:flex-start;overflow:hidden;}
+html,body{height:100%;width:100%;background:#f0f0f0;color:#222;overflow:auto;}
 body.dark{background:#121212;color:#f0f0f0;}
-.container{width:100%;max-width:500px;margin:0 auto;display:flex;flex-direction:column;border:2px solid #ccc;border-radius:16px;position:relative;background:#fff;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.15);height:100%;}
+.container{width:100%;max-width:500px;margin:0 auto;display:flex;flex-direction:column;border:2px solid #ccc;border-radius:16px;position:relative;background:#fff;overflow:visible;box-shadow:0 6px 20px rgba(0,0,0,.15);}
 body.dark .container{background:#1e1e1e;border-color:#555;}
-.header {position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0.5rem;z-index:1000;}
+.header {position:sticky;top:0;width:100%;display:flex;justify-content:center;align-items:center;background:#fff;z-index:1000;padding:0.5rem 0;}
+body.dark .header{background:#1e1e1e;}
+.header-center {display:flex;flex-direction:row;align-items:center;justify-content:center;gap:0.5rem;}
 .app-icon {font-size:1.5rem;}
 .app-title {font-size:1.5rem;margin:0;}
 #toggleDark {position:absolute;top:10px;right:10px;width:45px;height:45px;border-radius:50%;border:2px solid #ccc;display:flex;justify-content:center;align-items:center;font-weight:bold;font-size:1.3rem;background:#fff;color:#222;cursor:pointer;z-index:1001;transition:.3s;}
 body.dark #toggleDark {background:#333;color:#fff;border-color:#666;}
-#map{margin-top:60px;width:100%;flex:1;min-height:400px;position:relative;}
-.control-panel{width:100%;padding:0.5rem 1rem;display:flex;flex-direction:column;gap:0.5rem;overflow-y:auto;max-height:300px;}
+#map{margin-top:0;width:100%;height:400px;position:relative;}
+.control-panel{width:100%;padding:0.5rem 1rem;display:flex;flex-direction:column;gap:0.5rem;overflow:auto;}
 .row{display:flex;flex-direction:row;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;}
 .row input, .row button, .row select{flex:1 1 48%;min-width:0;padding:0.5rem 0.7rem;border-radius:10px;border:1px solid #ccc;font-size:0.95rem;}
 .row button{background:#007bff;color:#fff;border:none;cursor:pointer;transition:.3s;}
@@ -31,88 +33,90 @@ footer{width:100%;text-align:center;padding:0.5rem 0;font-size:0.8rem;color:#888
 body.dark footer{color:#aaa;border-color:#555;background:#1e1e1e;}
 #zoomControls{position:absolute;top:60px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:1002;}
 #zoomControls button{width:35px;height:35px;border-radius:8px;border:none;background:#007bff;color:#fff;font-weight:bold;cursor:pointer;}
-@media(max-width:500px){#map{min-height:300px;} .app-title{font-size:1.3rem;} .app-icon{font-size:1.3rem;}}
+@media(max-width:500px){#map{height:300px;} .app-title{font-size:1.3rem;} .app-icon{font-size:1.3rem;}}
 </style>
 </head>
 <body>
 <div class="container">
-<div class="header">
-  <span class="app-icon">🧭</span>
-  <h1 class="app-title">NaviGo</h1>
-</div>
-<div id="toggleDark">🌓</div>
+  <div class="header">
+    <div class="header-center">
+      <span class="app-icon">🧭</span>
+      <h1 class="app-title">NaviGo</h1>
+    </div>
+    <div id="toggleDark">🌓</div>
+  </div>
 
-<div id="zoomControls">
-  <button id="zoomIn">+</button>
-  <button id="zoomOut">-</button>
-</div>
+  <div id="zoomControls">
+    <button id="zoomIn">+</button>
+    <button id="zoomOut">-</button>
+  </div>
 
-<div class="control-panel">
-<p id="status">Click "Start Tracking" to begin</p>
-<p id="latitude"></p>
-<p id="longitude"></p>
-<p id="altitude"></p>
-<p id="speed"></p>
-<p id="accuracy"></p>
-<p class="compass" id="compass">Compass: --° (--)</p>
-<p id="calibrationHint">⚠️ Move your device in a figure-8 to calibrate the compass</p>
-<p id="street">Street: --</p>
+  <div id="map"></div>
 
-<div class="row">
-<button id="getLocation">Start Tracking</button>
-<button id="sos">Emergency SOS</button>
-</div>
+  <div class="control-panel">
+    <p id="status">Click "Start Tracking" to begin</p>
+    <p id="latitude"></p>
+    <p id="longitude"></p>
+    <p id="altitude"></p>
+    <p id="speed"></p>
+    <p id="accuracy"></p>
+    <p class="compass" id="compass">Compass: --° (--)</p>
+    <p id="calibrationHint">⚠️ Move your device in a figure-8 to calibrate the compass</p>
+    <p id="street">Street: --</p>
 
-<div class="row">
-<input type="text" id="destination" placeholder="Enter destination"/>
-<button id="navigateBtn">Navigate</button>
-</div>
+    <div class="row">
+      <button id="getLocation">Start Tracking</button>
+      <button id="sos">Emergency SOS</button>
+    </div>
 
-<div class="row">
-<button id="addBookmark">Add Bookmark</button>
-<button id="clearMarkers">Clear Map</button>
-</div>
+    <div class="row">
+      <input type="text" id="destination" placeholder="Enter destination"/>
+      <button id="navigateBtn">Navigate</button>
+    </div>
 
-<div class="row">
-<select id="mode">
-<option value="driving-car">Driving</option>
-<option value="cycling-regular">Cycling</option>
-<option value="foot-walking">Walking</option>
-</select>
-</div>
+    <div class="row">
+      <button id="addBookmark">Add Bookmark</button>
+      <button id="clearMarkers">Clear Map</button>
+    </div>
 
-<div class="row">
-<button id="batterySaverBtn">Battery Saver: OFF</button>
-</div>
+    <div class="row">
+      <select id="mode">
+        <option value="driving-car">Driving</option>
+        <option value="cycling-regular">Cycling</option>
+        <option value="foot-walking">Walking</option>
+      </select>
+    </div>
 
-<div class="row">
-<button id="rideShareBtn">Ride-Sharing</button>
-<button id="wearableSyncBtn">Sync to Wearable</button>
-</div>
+    <div class="row">
+      <button id="batterySaverBtn">Battery Saver: OFF</button>
+    </div>
 
-<div class="row">
-<button id="loadPOIs">Load Nearby POIs</button>
-<button id="loadTraffic">Load Traffic Alerts</button>
-<button id="loadPublicTransport">Load Public Transport & ETA</button>
-</div>
+    <div class="row">
+      <button id="rideShareBtn">Ride-Sharing</button>
+      <button id="wearableSyncBtn">Sync to Wearable</button>
+    </div>
 
-<div id="publicTransport"></div>
-<div id="trafficAlerts"></div>
-<div id="poiList"></div>
-<div class="bookmarks" id="bookmarkList"></div>
-</div>
+    <div class="row">
+      <button id="loadPOIs">Load Nearby POIs</button>
+      <button id="loadTraffic">Load Traffic Alerts</button>
+      <button id="loadPublicTransport">Load Public Transport & ETA</button>
+    </div>
 
-<div id="map"></div>
-<footer>© Manik Roy 2025 | All Rights Reserved</footer>
+    <div id="publicTransport"></div>
+    <div id="trafficAlerts"></div>
+    <div id="poiList"></div>
+    <div class="bookmarks" id="bookmarkList"></div>
+  </div>
+  <footer>© Manik Roy 2025 | All Rights Reserved</footer>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-// Map setup
+// ===================== Map & Tracking =====================
 let map=L.map('map').setView([0,0],2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-let marker, routeLine=L.polyline([], {color:'blue'}).addTo(map);
-let watchId=null, previousPos=null, totalDistance=0, destinationPos=null;
+let marker=null,routeLine=L.polyline([], {color:'blue'}).addTo(map);
+let watchId=null,previousPos=null,totalDistance=0,destinationPos=null;
 let bookmarks=JSON.parse(localStorage.getItem('bookmarks')||"[]");
 
 // Elements
@@ -137,14 +141,17 @@ let batterySaver=false;
 let gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:10000};
 let lastSpeakTime=0,lastDistance=null;
 
-// Dark mode
-toggleDarkBtn.addEventListener('click',()=>{document.body.classList.toggle('dark');map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';});
+// ===================== Dark Mode =====================
+toggleDarkBtn.addEventListener('click',()=>{
+  document.body.classList.toggle('dark');
+  map.getContainer().style.filter=document.body.classList.contains('dark')?'invert(90%) hue-rotate(180deg)':'';
+});
 
-// Zoom controls
+// ===================== Zoom Controls =====================
 document.getElementById('zoomIn').addEventListener('click',()=>{map.zoomIn();});
 document.getElementById('zoomOut').addEventListener('click',()=>{map.zoomOut();});
 
-// Compass & direction names
+// ===================== Compass =====================
 function getDirectionName(deg){const dirs=['N','NE','E','SE','S','SW','W','NW'];return dirs[Math.round(deg/45)%8];}
 let compassHeading=0,lastHeading=null,unstableCount=0;
 function handleOrientation(event){
@@ -163,11 +170,11 @@ function enableCompass(){
   } else{window.addEventListener('deviceorientationabsolute',handleOrientation,true);}
 }
 
-// Distance calculation
+// ===================== Distance =====================
 function calcDistance(lat1,lon1,lat2,lon2){const R=6371e3,φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180,Δφ=(lat2-lat1)*Math.PI/180,Δλ=(lon2-lon1)*Math.PI/180;const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));return R*c;}
 async function updateStreetName(lat,lon){try{let res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);let data=await res.json();streetElem.textContent=`Street: ${data.address.road||'--'}`;}catch(e){streetElem.textContent='Street: --';}}
 
-// Voice guidance
+// ===================== Voice Guidance =====================
 function speakDistance(lat1,lon1,lat2,lon2){
   if(!window.speechSynthesis)return;
   const distanceKm=calcDistance(lat1,lon1,lat2,lon2)/1000;
@@ -181,7 +188,7 @@ function speakDistance(lat1,lon1,lat2,lon2){
   msg.lang='en-US';window.speechSynthesis.speak(msg);
 }
 
-// Battery Saver
+// ===================== Battery Saver =====================
 batteryBtn.addEventListener('click',()=>{
   batterySaver=!batterySaver;
   if(batterySaver){gpsOptions.enableHighAccuracy=false;gpsOptions.maximumAge=30000;batteryBtn.textContent='Battery Saver: ON';}
@@ -190,7 +197,7 @@ batteryBtn.addEventListener('click',()=>{
   startTracking();
 });
 
-// Start tracking
+// ===================== Tracking =====================
 function startTracking(){
   if(!navigator.geolocation){alert("Geolocation not supported");status.textContent="Geolocation not supported";return;}
   if(watchId) navigator.geolocation.clearWatch(watchId);
@@ -210,78 +217,95 @@ function startTracking(){
       map.setView([lat,lon],15);
       if(previousPos) totalDistance+=calcDistance(previousPos.lat,previousPos.lon,lat,lon);
       previousPos={lat,lon};
+      routeLine.addLatLng([lat,lon]);
       updateStreetName(lat,lon);
-      updateRoute(lat,lon);
-      updateNearbyTransportETA(lat,lon);
+      if(destinationPos)speakDistance(lat,lon,destinationPos.lat,destinationPos.lon);
     },
-    function error(err){switch(err.code){case err.PERMISSION_DENIED: alert("Location permission denied");status.textContent="Permission denied"; break; case err.POSITION_UNAVAILABLE: alert("Location unavailable");status.textContent="Location unavailable"; break; case err.TIMEOUT: alert("Location request timed out");status.textContent="Timeout"; break;}},
+    function error(err){console.error(err);status.textContent="Error tracking location";},
     gpsOptions
   );
 }
+
 getLocationBtn.addEventListener('click',()=>{startTracking(); enableCompass();});
 
-// Destination
-function updateRoute(lat,lon){if(destinationPos){routeLine.setLatLngs([[lat,lon],[destinationPos.lat,destinationPos.lon]]); speakDistance(lat,lon,destinationPos.lat,destinationPos.lon);}}
-navigateBtn.addEventListener('click',async ()=>{
-  const val=destinationInput.value.trim();
-  if(!val)return alert("Enter destination");
-  try{
-    let res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
-    let data=await res.json();
-    if(data.length>0){destinationPos={lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon)};alert("Destination set!");}
-    else{alert("Destination not found");}
-  }catch(e){alert("Error fetching destination");}
+// ===================== Navigation =====================
+navigateBtn.addEventListener('click',()=>{
+  const dest=destinationInput.value.trim();
+  if(!dest){alert("Enter destination");return;}
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dest)}`)
+  .then(r=>r.json()).then(data=>{
+    if(!data||!data.length){alert("Destination not found");return;}
+    const dlat=parseFloat(data[0].lat),dlon=parseFloat(data[0].lon);
+    destinationPos={lat:dlat,lon:dlon};
+    L.marker([dlat,dlon],{icon:L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',iconSize:[30,30]})}).addTo(map).bindPopup("Destination").openPopup();
+  });
 });
 
-// Bookmarks
-function renderBookmarks(){bookmarkList.innerHTML='';bookmarks.forEach(b=>{const btn=document.createElement('button');btn.textContent=b.name;btn.style.width='100%';btn.addEventListener('click',()=>{map.setView([b.lat,b.lon],15);});bookmarkList.appendChild(btn);});}
-addBookmarkBtn.addEventListener('click',()=>{if(!previousPos)return alert("Start tracking first");const name=prompt("Enter bookmark name","Bookmark");if(name){bookmarks.push({name,lat:previousPos.lat,lon:previousPos.lon});localStorage.setItem('bookmarks',JSON.stringify(bookmarks));renderBookmarks();}});
-clearMarkersBtn.addEventListener('click',()=>{if(marker) marker.remove();marker=null;routeLine.setLatLngs([]);destinationPos=null;});
-sosBtn.addEventListener('click',()=>{if(!previousPos)return alert("Start tracking first");alert(`Emergency! Location: ${previousPos.lat.toFixed(6)}, ${previousPos.lon.toFixed(6)}`);});
+// ===================== Bookmarks =====================
+function renderBookmarks(){bookmarkList.innerHTML='';bookmarks.forEach(b=>{const div=document.createElement('div');div.textContent=`${b.name}: ${b.lat.toFixed(6)}, ${b.lon.toFixed(6)}`;bookmarkList.appendChild(div);});}
+addBookmarkBtn.addEventListener('click',()=>{
+  if(!previousPos){alert("No location to bookmark");return;}
+  const name=prompt("Enter bookmark name")||`Bookmark ${bookmarks.length+1}`;
+  bookmarks.push({name,lat:previousPos.lat,lon:previousPos.lon});
+  localStorage.setItem('bookmarks',JSON.stringify(bookmarks));
+  renderBookmarks();
+});
+clearMarkersBtn.addEventListener('click',()=>{routeLine.setLatLng([]);map.eachLayer(l=>{if(l instanceof L.Marker&&!l._icon.classList.contains('leaflet-marker-icon'))map.removeLayer(l);});});
 
-// Ride-sharing
-rideShareBtn.addEventListener('click',()=>{if(!previousPos)return alert("Start tracking first");window.open(`https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${previousPos.lat}&pickup[longitude]=${previousPos.lon}`,'_blank');});
-wearableBtn.addEventListener('click',()=>{alert("Wearable sync placeholder");});
+// ===================== SOS =====================
+sosBtn.addEventListener('click',()=>{alert("SOS activated! Sending your location...");console.log(previousPos);});
 
-// Optional features loaded on demand
-loadPOIsBtn.addEventListener('click',async ()=>{
-  if(!previousPos) return alert("Start tracking first");
-  poiListDiv.textContent="Loading nearby POIs...";
+// ===================== POIs =====================
+loadPOIsBtn.addEventListener('click',async()=>{
+  poiListDiv.textContent="Loading POIs...";
   try{
-    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:1000,${previousPos.lat},${previousPos.lon})[amenity~'fuel|restaurant|hospital'];out;`);
-    let data=await res.json();poiListDiv.textContent="";
-    data.elements.forEach(e=>{const p=document.createElement('div');p.textContent=`${e.tags.name||e.tags.amenity} (${e.lat.toFixed(5)},${e.lon.toFixed(5)})`;poiListDiv.appendChild(p);});
+    const res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[amenity];out;`);
+    const data=await res.json();
+    poiListDiv.textContent="";
+    data.elements.forEach(e=>{
+      const p=document.createElement('div');
+      p.textContent=e.tags.name||e.tags.amenity||'Unnamed POI';
+      poiListDiv.appendChild(p);
+    });
   }catch(e){poiListDiv.textContent="No POIs found";}
 });
 
-// Traffic alerts real-time
-loadTrafficBtn.addEventListener('click',async ()=>{
-  if(!previousPos) return alert("Start tracking first");
-  trafficAlertsDiv.textContent="Loading traffic alerts...";
+// ===================== Traffic Alerts =====================
+loadTrafficBtn.addEventListener('click',async()=>{
+  trafficAlertsDiv.textContent="Loading traffic...";
   try{
-    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];way(around:1000,${previousPos.lat},${previousPos.lon})[highway][maxspeed];out;`);
-    let data=await res.json();trafficAlertsDiv.textContent="";
-    data.elements.forEach(e=>{const p=document.createElement('div');p.textContent=`Road segment id:${e.id}, maxspeed:${e.tags.maxspeed||'--'} km/h`;trafficAlertsDiv.appendChild(p);});
-  }catch(e){trafficAlertsDiv.textContent="No traffic alerts";}
+    const res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[highway=traffic_signals];out;`);
+    const data=await res.json();
+    trafficAlertsDiv.textContent="";
+    data.elements.forEach(e=>{
+      const p=document.createElement('div');
+      p.textContent=`Traffic signal nearby: ${e.tags.name||'Unnamed'}`;
+      trafficAlertsDiv.appendChild(p);
+    });
+  }catch(e){trafficAlertsDiv.textContent="No traffic alerts found";}
 });
 
-// Real-time public transport & ETA
-async function updateNearbyTransportETA(lat,lon){
+// ===================== Public Transport & ETA =====================
+loadPublicTransportBtn.addEventListener('click',async()=>{
   publicTransportDiv.textContent="Loading nearby public transport...";
   try{
-    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${lat},${lon})[public_transport=platform];out;`);
+    let res=await fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:500,${previousPos.lat},${previousPos.lon})[public_transport=platform];out;`);
     let data=await res.json();publicTransportDiv.textContent="";
     data.elements.forEach(e=>{
-      let dMeters=calcDistance(lat,lon,e.lat,e.lon);
-      let etaMin=(dMeters/80).toFixed(0); // approx walking 80 m/min
+      let dMeters=calcDistance(previousPos.lat,previousPos.lon,e.lat,e.lon);
+      let etaMin=(dMeters/80).toFixed(0);
       const p=document.createElement('div');
       p.textContent=`Stop: ${e.tags.name||'Unnamed'}, ETA: ~${etaMin} min`;
       publicTransportDiv.appendChild(p);
     });
   }catch(e){publicTransportDiv.textContent="No nearby public transport stops";}
-}
+});
 
-// Initialize bookmarks
+// ===================== Ride-Sharing & Wearable =====================
+rideShareBtn.addEventListener('click',()=>{alert("Ride-sharing integration (optional, demo)");});
+wearableBtn.addEventListener('click',()=>{alert("Wearable sync (optional, demo)");});
+
+// ===================== Initialize =====================
 renderBookmarks();
 </script>
 </body>
